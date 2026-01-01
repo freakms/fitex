@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ButtonProps {
@@ -24,29 +24,39 @@ export const Button: React.FC<ButtonProps> = ({
   style,
 }) => {
   const getContainerStyle = (): ViewStyle[] => {
-    const base = [styles.container, styles[`${size}Container`]];
+    const base: ViewStyle[] = [styles.container];
+    if (size === 'small') base.push(styles.smallContainer);
+    else if (size === 'large') base.push(styles.largeContainer);
+    else base.push(styles.mediumContainer);
     
     switch (variant) {
       case 'secondary':
-        return [...base, styles.secondaryContainer];
+        base.push(styles.secondaryContainer);
+        break;
       case 'outline':
-        return [...base, styles.outlineContainer];
+        base.push(styles.outlineContainer);
+        break;
       case 'danger':
-        return [...base, styles.dangerContainer];
+        base.push(styles.dangerContainer);
+        break;
       default:
-        return [...base, styles.primaryContainer];
+        base.push(styles.primaryContainer);
     }
+    return base;
   };
 
   const getTextStyle = (): TextStyle[] => {
-    const base = [styles.text, styles[`${size}Text`]];
+    const base: TextStyle[] = [styles.text];
+    if (size === 'small') base.push(styles.smallText);
+    else if (size === 'large') base.push(styles.largeText);
+    else base.push(styles.mediumText);
     
-    switch (variant) {
-      case 'outline':
-        return [...base, styles.outlineText];
-      default:
-        return [...base, styles.defaultText];
+    if (variant === 'outline') {
+      base.push(styles.outlineText);
+    } else {
+      base.push(styles.defaultText);
     }
+    return base;
   };
 
   return (
