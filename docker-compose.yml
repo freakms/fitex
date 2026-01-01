@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # MongoDB Datenbank
+  mongodb:
+    image: mongo:6.0
+    container_name: fitgym-mongodb
+    restart: always
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=fitgym_db
+    networks:
+      - fitgym-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fitgym-backend
+    restart: always
+    ports:
+      - "8001:8001"
+    environment:
+      - MONGO_URL=mongodb://mongodb:27017
+      - DB_NAME=fitgym_db
+      - JWT_SECRET=${JWT_SECRET:-dein-geheimer-schluessel-hier-aendern}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - fitgym-network
+    healthcheck:
+      test: curl -f http://localhost:8001/api/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Expo Web Frontend (für Web-Zugang)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fitgym-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - EXPO_PUBLIC_API_URL=http://localhost:8001/api
+    depends_on:
+      - backend
+    networks:
+      - fitgym-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: fitgym-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - fitgym-network
+
+volumes:
+  mongodb_data:
+    driver: local
+
+networks:
+  fitgym-network:
+    driver: bridge
