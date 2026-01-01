@@ -85,7 +85,7 @@ export const Button: React.FC<ButtonProps> = ({
           <Text style={getTextStyle()}>{title}</Text>
         </>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
@@ -95,6 +95,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,
+    cursor: 'pointer',
+  },
+  pressed: {
+    opacity: 0.8,
   },
   smallContainer: {
     paddingVertical: 8,
