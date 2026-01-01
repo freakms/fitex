@@ -1,7 +1,40 @@
 import { create } from 'zustand';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Use AsyncStorage for web compatibility
+const storage = {
+  getItem: async (key: string): Promise<string | null> => {
+    try {
+      if (Platform.OS === 'web') {
+        return localStorage.getItem(key);
+      }
+      return await AsyncStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: async (key: string, value: string): Promise<void> => {
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.setItem(key, value);
+      } else {
+        await AsyncStorage.setItem(key, value);
+      }
+    } catch {}
+  },
+  deleteItem: async (key: string): Promise<void> => {
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.removeItem(key);
+      } else {
+        await AsyncStorage.removeItem(key);
+      }
+    } catch {}
+  }
+};
 
 const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://091a90c6-f7cd-49da-b416-4f8d4526df40.preview.emergentagent.com/api';
 
