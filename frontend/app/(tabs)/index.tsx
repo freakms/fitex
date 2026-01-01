@@ -30,9 +30,10 @@ export default function Home() {
         getPlans(),
       ]);
       setStats(statsData);
-      setPlans(plansData);
+      setPlans(Array.isArray(plansData) ? plansData : []);
     } catch (error) {
       console.error('Error loading data:', error);
+      setPlans([]);
     }
   };
 
