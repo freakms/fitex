@@ -1,101 +1,130 @@
-# 🚀 FitGym Deployment Anleitung
+# 🚀 Fitex Deployment auf fitex.masexitus.de
 
-## Schnellstart mit Docker
+## Schnellstart
 
-### Voraussetzungen
-- Docker & Docker Compose installiert
-- Git
-
-### 1. Repository klonen
+### 1. Repository auf Server klonen
 ```bash
-git clone <your-repo-url>
-cd fitgym
+git clone <your-repo-url> /opt/fitex
+cd /opt/fitex
 ```
 
 ### 2. Umgebungsvariablen konfigurieren
 ```bash
 cp .env.example .env
-nano .env  # Werte anpassen, besonders JWT_SECRET!
+nano .env
 ```
 
-### 3. Starten
+**Wichtig:** `JWT_SECRET` mit einem sicheren Wert ersetzen:
 ```bash
-# Alle Services starten
+# Sicheren Key generieren:
+openssl rand -base64 32
+```
+
+### 3. SSL-Zertifikate prüfen
+Die Zertifikate sollten hier liegen:
+```
+/etc/letsencrypt/live/fitex.masexitus.de/fullchain.pem
+/etc/letsencrypt/live/fitex.masexitus.de/privkey.pem
+```
+
+Falls nicht vorhanden:
+```bash
+sudo certbot certonly --standalone -d fitex.masexitus.de
+```
+
+### 4. Docker Compose starten
+```bash
 docker-compose up -d
-
-# Logs anzeigen
-docker-compose logs -f
-
-# Status prüfen
-docker-compose ps
 ```
 
-### 4. Übungen in Datenbank laden
+### 5. Übungen in Datenbank laden
 ```bash
-curl -X POST http://localhost:8001/api/admin/seed-exercises
+curl -X POST https://fitex.masexitus.de/api/admin/seed-exercises
 ```
 
-### 5. Zugriff
-- **Web App:** http://localhost
-- **API:** http://localhost/api/health
-
----
-
-## Produktion mit SSL
-
-### Let's Encrypt Zertifikat
-```bash
-# Certbot installieren
-sudo apt install certbot
-
-# Zertifikat erstellen
-sudo certbot certonly --standalone -d fitgym.deine-domain.de
-
-# Zertifikate kopieren
-mkdir -p nginx/ssl
-sudo cp /etc/letsencrypt/live/fitgym.deine-domain.de/fullchain.pem nginx/ssl/
-sudo cp /etc/letsencrypt/live/fitgym.deine-domain.de/privkey.pem nginx/ssl/
-```
-
-### HTTPS aktivieren
-In `nginx/nginx.conf` den HTTPS-Block auskommentieren und Domain anpassen.
+### 6. Fertig! 🎉
+Öffne: **https://fitex.masexitus.de**
 
 ---
 
 ## Nützliche Befehle
 
 ```bash
-# Neu starten
+# Status prüfen
+docker-compose ps
+
+# Logs anzeigen
+docker-compose logs -f
+
+# Nur Backend Logs
+docker-compose logs -f backend
+
+# Neustart
 docker-compose restart
 
 # Stoppen
 docker-compose down
 
-# Mit Daten löschen
-docker-compose down -v
+# Update & Neustart
+git pull
+docker-compose build
+docker-compose up -d
+```
 
-# Logs eines Services
-docker-compose logs -f backend
+---
 
-# In Container einloggen
-docker-compose exec backend bash
+## SSL-Zertifikat erneuern
+
+Let's Encrypt Zertifikate laufen nach 90 Tagen ab.
+
+### Automatische Erneuerung (Cronjob)
+```bash
+sudo crontab -e
+# Hinzufügen:
+0 3 * * * certbot renew --quiet && docker-compose -f /opt/fitex/docker-compose.yml restart nginx
+```
+
+### Manuelle Erneuerung
+```bash
+sudo certbot renew
+docker-compose restart nginx
 ```
 
 ---
 
 ## Backup
 
-### MongoDB Backup
+### Datenbank sichern
 ```bash
-# Backup erstellen
 docker-compose exec mongodb mongodump --out /data/backup
-
-# Backup kopieren
-docker cp fitgym-mongodb:/data/backup ./backup
+docker cp fitex-mongodb:/data/backup ./backup-$(date +%Y%m%d)
 ```
 
-### Restore
+### Wiederherstellen
 ```bash
-docker cp ./backup fitgym-mongodb:/data/backup
+docker cp ./backup-YYYYMMDD fitex-mongodb:/data/backup
 docker-compose exec mongodb mongorestore /data/backup
+```
+
+---
+
+## Troubleshooting
+
+### Nginx startet nicht
+```bash
+# SSL-Pfade prüfen
+ls -la /etc/letsencrypt/live/fitex.masexitus.de/
+
+# Nginx Config testen
+docker-compose exec nginx nginx -t
+```
+
+### Backend Fehler
+```bash
+docker-compose logs backend
+```
+
+### MongoDB Verbindung
+```bash
+docker-compose exec mongodb mongosh
 ```
