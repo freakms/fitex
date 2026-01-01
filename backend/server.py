@@ -550,29 +550,6 @@ Antworte NUR mit JSON:
     except Exception as e:
         logger.error(f"AI Plan generation error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Fehler bei der Plan-Generierung: {str(e)}")
-        plan_data = json.loads(content)
-        
-        # Create the plan
-        plan_id = str(uuid.uuid4())
-        final_plan = {
-            "id": plan_id,
-            "user_id": user["id"],
-            "name": plan_data.get("name", f"KI-Trainingsplan - {request.goal}"),
-            "description": plan_data.get("description", ""),
-            "goal": request.goal,
-            "exercises": plan_data.get("exercises", []),
-            "days_per_week": request.days_per_week,
-            "duration_weeks": request.duration_weeks,
-            "is_ai_generated": True,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        await db.training_plans.insert_one(final_plan)
-        return final_plan
-        
-    except Exception as e:
-        logger.error(f"AI Plan generation error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Fehler bei der Plan-Generierung: {str(e)}")
 
 # ============== WORKOUT LOGGING ==============
 
