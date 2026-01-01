@@ -332,18 +332,141 @@ async def delete_plan(plan_id: str, user: dict = Depends(get_current_user)):
 
 # ============== AI TRAINING PLAN GENERATION ==============
 
+async def generate_smart_plan(request: AITrainingPlanRequest, profile: dict, anamnesis: dict) -> dict:
+    """Generate a training plan based on user profile and goals using smart rule-based logic"""
+    
+    # Get exercises from database
+    exercises = await db.exercises.find({}, {"_id": 0}).to_list(500)
+    
+    # Filter exercises based on contraindications
+    joint_problems = anamnesis.get('joint_problems', [])
+    heart_conditions = anamnesis.get('heart_conditions', False)
+    high_blood_pressure = anamnesis.get('high_blood_pressure', False)
+    
+    safe_exercises = []
+    for ex in exercises:
+        # Check contraindications
+        contra = ex.get('contraindications', [])
+        has_contra = any(jp in contra for jp in joint_problems)
+        
+        # Skip high intensity for heart conditions
+        if heart_conditions and ex.get('category') == 'cardio' and ex.get('difficulty') == 'advanced':
+            continue
+        
+        if not has_contra:
+            safe_exercises.append(ex)
+    
+    # Filter by difficulty based on experience level
+    experience_level = profile.get('experience_level', 'beginner')
+    difficulty_map = {
+        'beginner': ['beginner'],
+        'intermediate': ['beginner', 'intermediate'],
+        'advanced': ['beginner', 'intermediate', 'advanced']
+    }
+    allowed_difficulties = difficulty_map.get(experience_level, ['beginner', 'intermediate'])
+    
+    # Select exercises based on goal
+    goal = request.goal
+    selected = []
+    
+    # Goal-specific exercise selection
+    if goal == 'weight_loss':
+        # More cardio and bodyweight
+        categories_priority = ['cardio', 'bodyweight', 'strength', 'flexibility']
+    elif goal == 'muscle_gain':
+        # Strength focused
+        categories_priority = ['strength', 'bodyweight', 'flexibility']
+    elif goal == 'mobility':
+        # Flexibility focused
+        categories_priority = ['flexibility', 'bodyweight', 'rehabilitation']
+    elif goal == 'endurance':
+        # Cardio focused
+        categories_priority = ['cardio', 'bodyweight', 'strength']
+    elif goal == 'rehabilitation':
+        # Rehab and gentle exercises
+        categories_priority = ['rehabilitation', 'flexibility', 'bodyweight']
+    else:
+        categories_priority = ['strength', 'bodyweight', 'cardio', 'flexibility']
+    
+    # Add rehabilitation exercises if user has joint problems
+    if joint_problems:
+        for ex in safe_exercises:
+            if ex.get('is_rehabilitation') and ex.get('difficulty') in allowed_difficulties:
+                if len(selected) < 3:
+                    selected.append(ex)
+    
+    # Fill up to 8 exercises from priority categories
+    for category in categories_priority:
+        for ex in safe_exercises:
+            if (ex.get('category') == category and 
+                ex.get('difficulty') in allowed_difficulties and
+                ex not in selected):
+                selected.append(ex)
+                if len(selected) >= 8:
+                    break
+        if len(selected) >= 8:
+            break
+    
+    # Ensure we have at least 5 exercises
+    if len(selected) < 5:
+        for ex in safe_exercises:
+            if ex not in selected and ex.get('difficulty') in allowed_difficulties:
+                selected.append(ex)
+                if len(selected) >= 6:
+                    break
+    
+    # Create workout exercises with appropriate sets/reps
+    workout_exercises = []
+    for ex in selected:
+        # Adjust based on goal
+        if goal == 'muscle_gain':
+            sets, reps = (4, 8) if experience_level != 'beginner' else (3, 10)
+        elif goal == 'endurance':
+            sets, reps = (3, 15)
+        elif goal == 'rehabilitation':
+            sets, reps = (2, 12)
+        else:
+            sets, reps = (3, 10)
+        
+        workout_exercises.append({
+            "exercise_id": ex['id'],
+            "sets": sets,
+            "reps": reps,
+            "rest_seconds": 60 if goal != 'muscle_gain' else 90,
+            "notes": f"Achte auf korrekte Ausführung"
+        })
+    
+    # Generate plan name
+    goal_names = {
+        'weight_loss': 'Fettverbrennung',
+        'muscle_gain': 'Muskelaufbau',
+        'mobility': 'Mobilität',
+        'endurance': 'Ausdauer',
+        'rehabilitation': 'Rehabilitation'
+    }
+    
+    return {
+        "name": f"Personalisierter {goal_names.get(goal, 'Fitness')}-Plan",
+        "description": f"Maßgeschneiderter Plan für {goal_names.get(goal, 'Fitness')} basierend auf deinem Profil und gesundheitlichen Einschränkungen.",
+        "exercises": workout_exercises
+    }
+
 @api_router.post("/plans/generate")
 async def generate_ai_plan(request: AITrainingPlanRequest, user: dict = Depends(get_current_user)):
     try:
         profile = user.get("profile", {})
         anamnesis = user.get("anamnesis", {})
         
-        # Get available exercises
-        exercises = await db.exercises.find({}, {"_id": 0}).to_list(500)
-        exercise_names = [f"{e['name_de']} (ID: {e['id']}, Kategorie: {e['category']}, Muskelgruppen: {', '.join(e['muscle_groups'])}, Schwierigkeit: {e['difficulty']})" for e in exercises[:100]]
+        # Try AI generation first, fallback to smart rules
+        plan_data = None
         
-        # Build context about user
-        user_context = f"""
+        try:
+            # Get available exercises
+            exercises = await db.exercises.find({}, {"_id": 0}).to_list(500)
+            exercise_names = [f"{e['name_de']} (ID: {e['id']}, Kategorie: {e['category']}, Muskelgruppen: {', '.join(e['muscle_groups'])}, Schwierigkeit: {e['difficulty']})" for e in exercises[:50]]
+            
+            # Build context about user
+            user_context = f"""
 Benutzerprofil:
 - Gewicht: {profile.get('weight', 'unbekannt')} kg
 - Größe: {profile.get('height', 'unbekannt')} cm
@@ -359,7 +482,6 @@ Gesundheitliche Anamnese:
 - Diabetes: {'Ja' if anamnesis.get('diabetes') else 'Nein'}
 - Gelenkprobleme: {', '.join(anamnesis.get('joint_problems', [])) or 'Keine'}
 - Andere Einschränkungen: {anamnesis.get('physical_limitations', 'Keine')}
-- Medikamente: {anamnesis.get('medications', 'Keine')}
 
 Trainingsplan-Anforderung:
 - Ziel: {request.goal}
@@ -367,57 +489,67 @@ Trainingsplan-Anforderung:
 - Dauer: {request.duration_weeks} Wochen
 - Fokus-Bereiche: {', '.join(request.focus_areas) if request.focus_areas else 'Allgemein'}
 """
-        
-        prompt = f"""Du bist ein professioneller Fitness-Trainer und Physiotherapeut. Erstelle einen personalisierten Trainingsplan basierend auf folgenden Informationen:
+            
+            prompt = f"""Du bist ein professioneller Fitness-Trainer. Erstelle einen personalisierten Trainingsplan:
 
 {user_context}
 
 Verfügbare Übungen (verwende NUR diese IDs):
-{chr(10).join(exercise_names[:50])}
+{chr(10).join(exercise_names)}
 
-WICHTIG:
-1. Berücksichtige alle gesundheitlichen Einschränkungen
-2. Bei Gelenkproblemen (z.B. Knie): Vermeide belastende Übungen, füge stattdessen Rehabilitationsübungen hinzu
-3. Bei Herzproblemen: Keine hochintensiven Übungen
-4. Bei Bluthochdruck: Moderate Intensität
-5. Passe die Gewichte und Wiederholungen dem Erfahrungslevel an
+WICHTIG: Berücksichtige alle gesundheitlichen Einschränkungen. Bei Gelenkproblemen vermeide belastende Übungen.
 
-Erstelle einen Trainingsplan im folgenden JSON-Format (NUR JSON, keine andere Text):
-{{
-    "name": "Planname",
-    "description": "Kurze Beschreibung",
-    "exercises": [
-        {{
-            "exercise_id": "ID aus der Liste",
-            "sets": 3,
-            "reps": 10,
-            "rest_seconds": 60,
-            "notes": "Hinweise"
-        }}
-    ]
-}}
+Antworte NUR mit JSON:
+{{"name": "Planname", "description": "Beschreibung", "exercises": [{{"exercise_id": "ID", "sets": 3, "reps": 10, "rest_seconds": 60, "notes": ""}}]}}"""
 
-Wähle 6-10 passende Übungen für ein ausgewogenes Training."""
-
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Du bist ein Fitness-Experte. Antworte NUR mit validem JSON."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7,
-            max_tokens=2000
-        )
+            client = get_openai_client()
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Du bist ein Fitness-Experte. Antworte NUR mit validem JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                max_tokens=2000
+            )
+            
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+            content = content.strip()
+            
+            import json
+            plan_data = json.loads(content)
+            logger.info("AI plan generated successfully")
+            
+        except Exception as ai_error:
+            logger.warning(f"AI generation failed, using smart fallback: {str(ai_error)}")
+            # Fallback to smart rule-based generation
+            plan_data = await generate_smart_plan(request, profile, anamnesis)
         
-        content = response.choices[0].message.content.strip()
-        # Remove markdown code blocks if present
-        if content.startswith("```"):
-            content = content.split("```")[1]
-            if content.startswith("json"):
-                content = content[4:]
-        content = content.strip()
+        # Create the plan
+        plan_id = str(uuid.uuid4())
+        final_plan = {
+            "id": plan_id,
+            "user_id": user["id"],
+            "name": plan_data.get("name", f"Trainingsplan - {request.goal}"),
+            "description": plan_data.get("description", ""),
+            "goal": request.goal,
+            "exercises": plan_data.get("exercises", []),
+            "days_per_week": request.days_per_week,
+            "duration_weeks": request.duration_weeks,
+            "is_ai_generated": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
         
-        import json
+        await db.training_plans.insert_one(final_plan)
+        return final_plan
+        
+    except Exception as e:
+        logger.error(f"AI Plan generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Fehler bei der Plan-Generierung: {str(e)}")
         plan_data = json.loads(content)
         
         # Create the plan
