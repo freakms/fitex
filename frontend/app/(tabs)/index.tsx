@@ -165,7 +165,7 @@ export default function Home() {
               />
             </View>
           ) : (
-            plans.slice(0, 3).map((plan) => (
+            (plans || []).slice(0, 3).map((plan) => (
               <TouchableOpacity
                 key={plan.id}
                 style={styles.planCard}
