@@ -1,130 +1,123 @@
-# 🚀 Fitex Deployment auf fitex.masexitus.de
+# 🚀 Fitex Deployment mit Nginx Proxy Manager
 
-## Schnellstart
-
-### 1. Repository auf Server klonen
+## 1. Repository auf Server klonen
 ```bash
 git clone <your-repo-url> /opt/fitex
 cd /opt/fitex
 ```
 
-### 2. Umgebungsvariablen konfigurieren
+## 2. Environment konfigurieren
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-**Wichtig:** `JWT_SECRET` mit einem sicheren Wert ersetzen:
+JWT_SECRET generieren:
 ```bash
-# Sicheren Key generieren:
 openssl rand -base64 32
 ```
 
-### 3. SSL-Zertifikate prüfen
-Die Zertifikate sollten hier liegen:
-```
-/etc/letsencrypt/live/fitex.masexitus.de/fullchain.pem
-/etc/letsencrypt/live/fitex.masexitus.de/privkey.pem
-```
-
-Falls nicht vorhanden:
-```bash
-sudo certbot certonly --standalone -d fitex.masexitus.de
-```
-
-### 4. Docker Compose starten
+## 3. Docker starten
 ```bash
 docker-compose up -d
 ```
 
-### 5. Übungen in Datenbank laden
+## 4. Nginx Proxy Manager konfigurieren
+
+### Proxy Host erstellen:
+
+| Feld | Wert |
+|------|------|
+| **Domain Names** | `fitex.masexitus.de` |
+| **Scheme** | `http` |
+| **Forward Hostname/IP** | `host.docker.internal` oder Server-IP |
+| **Forward Port** | `3000` |
+
+### Custom Locations hinzufügen:
+
+Klicke auf "Custom Locations" → "Add Location":
+
+| Location | Scheme | Forward Host | Forward Port |
+|----------|--------|--------------|--------------|
+| `/api` | `http` | `host.docker.internal` | `8001` |
+
+### SSL aktivieren:
+- Tab "SSL" → Let's Encrypt Zertifikat anfordern
+- "Force SSL" aktivieren
+- "HTTP/2 Support" aktivieren
+
+---
+
+## 5. Übungen laden
 ```bash
 curl -X POST https://fitex.masexitus.de/api/admin/seed-exercises
 ```
 
-### 6. Fertig! 🎉
+## 6. Fertig! 🎉
 Öffne: **https://fitex.masexitus.de**
+
+---
+
+## NPM Konfiguration (Screenshot-Referenz)
+
+```
+┌─────────────────────────────────────────────────┐
+│ Proxy Host: fitex.masexitus.de                  │
+├─────────────────────────────────────────────────┤
+│ Details:                                        │
+│   Forward: http://[SERVER-IP]:3000              │
+│                                                 │
+│ Custom Locations:                               │
+│   /api → http://[SERVER-IP]:8001                │
+│                                                 │
+│ SSL:                                            │
+│   ✅ Force SSL                                  │
+│   ✅ HTTP/2 Support                             │
+│   ✅ Let's Encrypt                              │
+└─────────────────────────────────────────────────┘
+```
+
+---
+
+## Alternative: Zwei separate Proxy Hosts
+
+Falls Custom Locations nicht funktionieren:
+
+### Host 1: Frontend
+- Domain: `fitex.masexitus.de`
+- Forward: `http://[IP]:3000`
+
+### Host 2: API
+- Domain: `api.fitex.masexitus.de`
+- Forward: `http://[IP]:8001`
+
+Dann in den Frontend-Dateien die API-URL ändern auf:
+`https://api.fitex.masexitus.de`
 
 ---
 
 ## Nützliche Befehle
 
 ```bash
-# Status prüfen
+# Status
 docker-compose ps
 
-# Logs anzeigen
+# Logs
 docker-compose logs -f
-
-# Nur Backend Logs
-docker-compose logs -f backend
 
 # Neustart
 docker-compose restart
 
-# Stoppen
-docker-compose down
-
-# Update & Neustart
-git pull
-docker-compose build
-docker-compose up -d
-```
-
----
-
-## SSL-Zertifikat erneuern
-
-Let's Encrypt Zertifikate laufen nach 90 Tagen ab.
-
-### Automatische Erneuerung (Cronjob)
-```bash
-sudo crontab -e
-# Hinzufügen:
-0 3 * * * certbot renew --quiet && docker-compose -f /opt/fitex/docker-compose.yml restart nginx
-```
-
-### Manuelle Erneuerung
-```bash
-sudo certbot renew
-docker-compose restart nginx
+# Update
+git pull && docker-compose build && docker-compose up -d
 ```
 
 ---
 
 ## Backup
 
-### Datenbank sichern
 ```bash
+# Datenbank sichern
 docker-compose exec mongodb mongodump --out /data/backup
 docker cp fitex-mongodb:/data/backup ./backup-$(date +%Y%m%d)
-```
-
-### Wiederherstellen
-```bash
-docker cp ./backup-YYYYMMDD fitex-mongodb:/data/backup
-docker-compose exec mongodb mongorestore /data/backup
-```
-
----
-
-## Troubleshooting
-
-### Nginx startet nicht
-```bash
-# SSL-Pfade prüfen
-ls -la /etc/letsencrypt/live/fitex.masexitus.de/
-
-# Nginx Config testen
-docker-compose exec nginx nginx -t
-```
-
-### Backend Fehler
-```bash
-docker-compose logs backend
-```
-
-### MongoDB Verbindung
-```bash
-docker-compose exec mongodb mongosh
 ```
