@@ -31,10 +31,17 @@ JWT_EXPIRATION_HOURS = 168  # 7 days
 EMERGENT_LLM_KEY = "sk-emergent-543338e18E701109a5"
 INTEGRATION_PROXY_URL = os.environ.get('INTEGRATION_PROXY_URL', 'https://integrations.emergentagent.com')
 
-openai_client = OpenAI(
-    api_key=EMERGENT_LLM_KEY,
-    base_url=f"{INTEGRATION_PROXY_URL}/openai/v1"
-)
+# Initialize OpenAI client - will be used with proper integration
+openai_client = None
+
+def get_openai_client():
+    global openai_client
+    if openai_client is None:
+        openai_client = OpenAI(
+            api_key=EMERGENT_LLM_KEY,
+            base_url=f"{INTEGRATION_PROXY_URL}/openai/v1"
+        )
+    return openai_client
 
 app = FastAPI(title="FitGym API", version="1.0.0")
 api_router = APIRouter(prefix="/api")
