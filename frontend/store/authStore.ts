@@ -91,8 +91,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const response = await axios.post(`${API_URL}/auth/login`, { email, password });
       const { token, user } = response.data;
       
-      await SecureStore.setItemAsync('token', token);
-      await SecureStore.setItemAsync('user', JSON.stringify(user));
+      await storage.setItem('token', token);
+      await storage.setItem('user', JSON.stringify(user));
       
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
@@ -107,8 +107,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const response = await axios.post(`${API_URL}/auth/register`, { email, password, name });
       const { token, user } = response.data;
       
-      await SecureStore.setItemAsync('token', token);
-      await SecureStore.setItemAsync('user', JSON.stringify(user));
+      await storage.setItem('token', token);
+      await storage.setItem('user', JSON.stringify(user));
       
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
@@ -119,16 +119,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    await SecureStore.deleteItemAsync('token');
-    await SecureStore.deleteItemAsync('user');
+    await storage.deleteItem('token');
+    await storage.deleteItem('user');
     delete axios.defaults.headers.common['Authorization'];
     set({ user: null, token: null, isAuthenticated: false });
   },
 
   loadStoredAuth: async () => {
     try {
-      const token = await SecureStore.getItemAsync('token');
-      const userStr = await SecureStore.getItemAsync('user');
+      const token = await storage.getItem('token');
+      const userStr = await storage.getItem('user');
       
       if (token && userStr) {
         const user = JSON.parse(userStr);
@@ -140,8 +140,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           set({ user: response.data, token, isAuthenticated: true, isLoading: false });
         } catch {
           // Token invalid, clear storage
-          await SecureStore.deleteItemAsync('token');
-          await SecureStore.deleteItemAsync('user');
+          await storage.deleteItem('token');
+          await storage.deleteItem('user');
           set({ user: null, token: null, isAuthenticated: false, isLoading: false });
         }
       } else {
@@ -158,7 +158,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const currentUser = get().user;
       if (currentUser) {
         const updatedUser = { ...currentUser, profile: response.data.profile };
-        await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+        await storage.setItem('user', JSON.stringify(updatedUser));
         set({ user: updatedUser });
       }
     } catch (error: any) {
@@ -172,7 +172,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const currentUser = get().user;
       if (currentUser) {
         const updatedUser = { ...currentUser, anamnesis: response.data.anamnesis };
-        await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+        await storage.setItem('user', JSON.stringify(updatedUser));
         set({ user: updatedUser });
       }
     } catch (error: any) {
@@ -183,7 +183,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   refreshUser: async () => {
     try {
       const response = await axios.get(`${API_URL}/auth/me`);
-      await SecureStore.setItemAsync('user', JSON.stringify(response.data));
+      await storage.setItem('user', JSON.stringify(response.data));
       set({ user: response.data });
     } catch (error) {
       console.error('Refresh user failed:', error);
