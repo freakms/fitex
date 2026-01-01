@@ -545,6 +545,8 @@ Antworte NUR mit JSON:
         }
         
         await db.training_plans.insert_one(final_plan)
+        # Remove _id before returning
+        final_plan.pop('_id', None)
         return final_plan
         
     except Exception as e:
