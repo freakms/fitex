@@ -60,11 +60,15 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   return (
-    <TouchableOpacity
-      style={[...getContainerStyle(), disabled && styles.disabled, style]}
+    <Pressable
+      style={({ pressed }) => [
+        ...getContainerStyle(), 
+        disabled && styles.disabled, 
+        pressed && styles.pressed,
+        style
+      ]}
       onPress={onPress}
       disabled={disabled || loading}
-      activeOpacity={0.8}
     >
       {loading ? (
         <ActivityIndicator color="#fff" />
