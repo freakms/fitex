@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,7 +20,7 @@ export default function GenerateAIPlan() {
   const insets = useSafeAreaInsets();
   const { user } = useAuthStore();
   
-  const [goal, setGoal] = useState('');
+  const [goals, setGoals] = useState<string[]>([]);
   const [daysPerWeek, setDaysPerWeek] = useState(3);
   const [durationWeeks, setDurationWeeks] = useState(4);
   const [focusAreas, setFocusAreas] = useState<string[]>([]);
@@ -39,6 +38,19 @@ export default function GenerateAIPlan() {
     'Brust', 'Rücken', 'Schultern', 'Arme', 'Beine', 'Bauch', 'Ganzkörper'
   ];
 
+  const toggleGoal = (goalId: string) => {
+    setGoals((prev) => {
+      if (prev.includes(goalId)) {
+        return prev.filter((g) => g !== goalId);
+      }
+      if (prev.length >= 3) {
+        Alert.alert('Maximum erreicht', 'Du kannst maximal 3 Ziele auswählen.');
+        return prev;
+      }
+      return [...prev, goalId];
+    });
+  };
+
   const toggleFocus = (area: string) => {
     setFocusAreas((prev) =>
       prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]
@@ -49,28 +61,37 @@ export default function GenerateAIPlan() {
   const hasAnamnesis = user?.anamnesis && Object.keys(user.anamnesis).length > 0;
 
   const handleGenerate = async () => {
-    if (!goal) {
-      Alert.alert('Fehler', 'Bitte wähle ein Trainingsziel');
+    if (goals.length === 0) {
+      Alert.alert('Fehler', 'Bitte wähle mindestens ein Trainingsziel');
       return;
     }
 
     setGenerating(true);
     try {
+      // Use first goal as primary, pass others as focus
+      const primaryGoal = goals[0];
+      const additionalGoals = goals.slice(1);
+      
       const plan = await generateAIPlan({
-        goal,
+        goal: primaryGoal,
+        goals: goals, // Pass all goals
         days_per_week: daysPerWeek,
         duration_weeks: durationWeeks,
-        focus_areas: focusAreas.length > 0 ? focusAreas : undefined,
+        focus_areas: [...focusAreas, ...additionalGoals.map(g => {
+          const opt = goalOptions.find(o => o.id === g);
+          return opt?.label || g;
+        })],
       });
       
       Alert.alert(
         'Plan erstellt!',
-        `Dein KI-Trainingsplan "${plan.name}" wurde erfolgreich generiert.`,
+        `Dein Trainingsplan "${plan.name}" wurde erfolgreich generiert.`,
         [
           { text: 'Anzeigen', onPress: () => router.replace(`/plans/${plan.id}`) },
         ]
       );
     } catch (error: any) {
+      console.error('Generate error:', error);
       Alert.alert('Fehler', error.message || 'Plan konnte nicht generiert werden');
     } finally {
       setGenerating(false);
@@ -91,8 +112,7 @@ export default function GenerateAIPlan() {
           </View>
           <Text style={styles.aiTitle}>KI-Trainingsplan Generator</Text>
           <Text style={styles.aiDescription}>
-            Basierend auf deinem Profil und deinen gesundheitlichen Daten erstellt die KI einen
-            personalisierten Trainingsplan für dich.
+            Wähle bis zu 3 Ziele für einen kombinierten, personalisierten Trainingsplan.
           </Text>
         </View>
 
@@ -112,31 +132,42 @@ export default function GenerateAIPlan() {
           </TouchableOpacity>
         )}
 
-        <Text style={styles.sectionTitle}>Trainingsziel</Text>
-        {goalOptions.map((opt) => (
-          <TouchableOpacity
-            key={opt.id}
-            style={[styles.goalCard, goal === opt.id && styles.goalCardSelected]}
-            onPress={() => setGoal(opt.id)}
-          >
-            <View style={[styles.goalIcon, goal === opt.id && styles.goalIconSelected]}>
-              <Ionicons
-                name={opt.icon as any}
-                size={28}
-                color={goal === opt.id ? '#fff' : '#6366f1'}
-              />
-            </View>
-            <View style={styles.goalContent}>
-              <Text style={[styles.goalLabel, goal === opt.id && styles.goalLabelSelected]}>
-                {opt.label}
-              </Text>
-              <Text style={styles.goalDescription}>{opt.description}</Text>
-            </View>
-            {goal === opt.id && (
-              <Ionicons name="checkmark-circle" size={24} color="#6366f1" />
-            )}
-          </TouchableOpacity>
-        ))}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Trainingsziele</Text>
+          <Text style={styles.sectionSubtitle}>{goals.length}/3 ausgewählt</Text>
+        </View>
+        
+        {goalOptions.map((opt) => {
+          const isSelected = goals.includes(opt.id);
+          const selectionIndex = goals.indexOf(opt.id);
+          
+          return (
+            <TouchableOpacity
+              key={opt.id}
+              style={[styles.goalCard, isSelected && styles.goalCardSelected]}
+              onPress={() => toggleGoal(opt.id)}
+            >
+              <View style={[styles.goalIcon, isSelected && styles.goalIconSelected]}>
+                <Ionicons
+                  name={opt.icon as any}
+                  size={28}
+                  color={isSelected ? '#fff' : '#6366f1'}
+                />
+              </View>
+              <View style={styles.goalContent}>
+                <Text style={[styles.goalLabel, isSelected && styles.goalLabelSelected]}>
+                  {opt.label}
+                </Text>
+                <Text style={styles.goalDescription}>{opt.description}</Text>
+              </View>
+              {isSelected && (
+                <View style={styles.selectionBadge}>
+                  <Text style={styles.selectionBadgeText}>{selectionIndex + 1}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
 
         <Text style={styles.sectionTitle}>Trainingsfrequenz</Text>
         <View style={styles.frequencyContainer}>
@@ -201,11 +232,20 @@ export default function GenerateAIPlan() {
           ))}
         </View>
 
+        {goals.length > 1 && (
+          <View style={styles.combinedInfo}>
+            <Ionicons name="information-circle" size={20} color="#6366f1" />
+            <Text style={styles.combinedInfoText}>
+              Kombinierter Plan: {goals.map(g => goalOptions.find(o => o.id === g)?.label).join(' + ')}
+            </Text>
+          </View>
+        )}
+
         <Button
-          title={generating ? 'Plan wird generiert...' : 'Plan generieren'}
+          title={generating ? 'Plan wird generiert...' : `Plan generieren (${goals.length} ${goals.length === 1 ? 'Ziel' : 'Ziele'})`}
           onPress={handleGenerate}
           loading={generating}
-          disabled={!goal || generating}
+          disabled={goals.length === 0 || generating}
           icon="sparkles"
           size="large"
           style={styles.generateButton}
@@ -281,12 +321,24 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginTop: 2,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    marginTop: 8,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
     marginBottom: 12,
     marginTop: 8,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#6366f1',
+    fontWeight: '600',
   },
   goalCard: {
     flexDirection: 'row',
@@ -330,6 +382,19 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginTop: 4,
   },
+  selectionBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectionBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
   frequencyContainer: {
     flexDirection: 'row',
     gap: 16,
@@ -369,7 +434,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   focusChip: {
     paddingHorizontal: 16,
@@ -387,6 +452,21 @@ const styles = StyleSheet.create({
   focusTextSelected: {
     color: '#fff',
     fontWeight: '600',
+  },
+  combinedInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6366f110',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  combinedInfoText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#6366f1',
+    fontWeight: '500',
   },
   generateButton: {
     marginTop: 8,
