@@ -58,7 +58,7 @@ export default function Exercises() {
     setRefreshing(false);
   };
 
-  const filteredExercises = exercises.filter((exercise) =>
+  const filteredExercises = (exercises || []).filter((exercise) =>
     exercise.name_de.toLowerCase().includes(searchQuery.toLowerCase()) ||
     exercise.muscle_groups.some((mg) =>
       mg.toLowerCase().includes(searchQuery.toLowerCase())
