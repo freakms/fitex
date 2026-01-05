@@ -486,6 +486,18 @@ async def generate_ai_plan(request: AITrainingPlanRequest, user: dict = Depends(
         profile = user.get("profile", {})
         anamnesis = user.get("anamnesis", {})
         
+        # Get all goals (support both single goal and multiple goals)
+        all_goals = request.goals if request.goals else [request.goal]
+        all_goals = all_goals[:3]  # Limit to 3 goals max
+        
+        goal_names = {
+            'weight_loss': 'Fettverbrennung',
+            'muscle_gain': 'Muskelaufbau',
+            'mobility': 'Mobilität',
+            'endurance': 'Ausdauer',
+            'rehabilitation': 'Rehabilitation'
+        }
+        
         # Try AI generation first, fallback to smart rules
         plan_data = None
         
@@ -493,6 +505,10 @@ async def generate_ai_plan(request: AITrainingPlanRequest, user: dict = Depends(
             # Get available exercises
             exercises = await db.exercises.find({}, {"_id": 0}).to_list(500)
             exercise_names = [f"{e['name_de']} (ID: {e['id']}, Kategorie: {e['category']}, Muskelgruppen: {', '.join(e['muscle_groups'])}, Schwierigkeit: {e['difficulty']})" for e in exercises[:50]]
+            
+            # Format goals for prompt
+            goals_text = ', '.join([goal_names.get(g, g) for g in all_goals])
+            goals_instruction = f"Kombiniere Übungen für folgende Ziele: {goals_text}" if len(all_goals) > 1 else f"Ziel: {goal_names.get(all_goals[0], all_goals[0])}"
             
             # Build context about user
             user_context = f"""
@@ -513,11 +529,15 @@ Gesundheitliche Anamnese:
 - Andere Einschränkungen: {anamnesis.get('physical_limitations', 'Keine')}
 
 Trainingsplan-Anforderung:
-- Ziel: {request.goal}
+- {goals_instruction}
+- Anzahl Ziele: {len(all_goals)}
 - Trainingstage pro Woche: {request.days_per_week}
 - Dauer: {request.duration_weeks} Wochen
 - Fokus-Bereiche: {', '.join(request.focus_areas) if request.focus_areas else 'Allgemein'}
 """
+            
+            # Adjust exercise count based on number of goals
+            exercise_count = 8 + (len(all_goals) - 1) * 2  # 8, 10, or 12 exercises
             
             prompt = f"""Du bist ein professioneller Fitness-Trainer. Erstelle einen personalisierten Trainingsplan:
 
@@ -526,7 +546,11 @@ Trainingsplan-Anforderung:
 Verfügbare Übungen (verwende NUR diese IDs):
 {chr(10).join(exercise_names)}
 
-WICHTIG: Berücksichtige alle gesundheitlichen Einschränkungen. Bei Gelenkproblemen vermeide belastende Übungen.
+WICHTIG: 
+- Berücksichtige alle gesundheitlichen Einschränkungen
+- Bei Gelenkproblemen vermeide belastende Übungen
+- Wähle ca. {exercise_count} Übungen die alle {len(all_goals)} Ziele abdecken
+- Bei mehreren Zielen: kombiniere Übungen aus verschiedenen Kategorien
 
 Antworte NUR mit JSON:
 {{"name": "Planname", "description": "Beschreibung", "exercises": [{{"exercise_id": "ID", "sets": 3, "reps": 10, "rest_seconds": 60, "notes": ""}}]}}"""
@@ -558,14 +582,19 @@ Antworte NUR mit JSON:
             # Fallback to smart rule-based generation
             plan_data = await generate_smart_plan(request, profile, anamnesis)
         
-        # Create the plan
+        # Create the plan - store all goals
         plan_id = str(uuid.uuid4())
+        
+        # Generate combined goal string for storage
+        combined_goal = ', '.join(all_goals) if len(all_goals) > 1 else all_goals[0]
+        
         final_plan = {
             "id": plan_id,
             "user_id": user["id"],
-            "name": plan_data.get("name", f"Trainingsplan - {request.goal}"),
+            "name": plan_data.get("name", f"Trainingsplan - {combined_goal}"),
             "description": plan_data.get("description", ""),
-            "goal": request.goal,
+            "goal": combined_goal,
+            "goals": all_goals,
             "exercises": plan_data.get("exercises", []),
             "days_per_week": request.days_per_week,
             "duration_weeks": request.duration_weeks,
