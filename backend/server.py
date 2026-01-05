@@ -366,28 +366,31 @@ async def generate_smart_plan(request: AITrainingPlanRequest, profile: dict, ana
     }
     allowed_difficulties = difficulty_map.get(experience_level, ['beginner', 'intermediate'])
     
-    # Select exercises based on goal
-    goal = request.goal
-    selected = []
+    # Get all goals (support both single goal and multiple goals)
+    all_goals = request.goals if request.goals else [request.goal]
+    all_goals = all_goals[:3]  # Limit to 3 goals max
     
-    # Goal-specific exercise selection
-    if goal == 'weight_loss':
-        # More cardio and bodyweight
-        categories_priority = ['cardio', 'bodyweight', 'strength', 'flexibility']
-    elif goal == 'muscle_gain':
-        # Strength focused
-        categories_priority = ['strength', 'bodyweight', 'flexibility']
-    elif goal == 'mobility':
-        # Flexibility focused
-        categories_priority = ['flexibility', 'bodyweight', 'rehabilitation']
-    elif goal == 'endurance':
-        # Cardio focused
-        categories_priority = ['cardio', 'bodyweight', 'strength']
-    elif goal == 'rehabilitation':
-        # Rehab and gentle exercises
-        categories_priority = ['rehabilitation', 'flexibility', 'bodyweight']
-    else:
-        categories_priority = ['strength', 'bodyweight', 'cardio', 'flexibility']
+    # Goal-specific category mapping
+    goal_categories = {
+        'weight_loss': ['cardio', 'bodyweight', 'strength'],
+        'muscle_gain': ['strength', 'bodyweight'],
+        'mobility': ['flexibility', 'bodyweight', 'rehabilitation'],
+        'endurance': ['cardio', 'bodyweight'],
+        'rehabilitation': ['rehabilitation', 'flexibility', 'bodyweight']
+    }
+    
+    # Combine categories from all goals (unique, maintaining priority order)
+    combined_categories = []
+    for goal in all_goals:
+        for cat in goal_categories.get(goal, ['strength', 'bodyweight', 'cardio']):
+            if cat not in combined_categories:
+                combined_categories.append(cat)
+    
+    # Always add flexibility at the end for balance
+    if 'flexibility' not in combined_categories:
+        combined_categories.append('flexibility')
+    
+    selected = []
     
     # Add rehabilitation exercises if user has joint problems
     if joint_problems:
@@ -396,48 +399,65 @@ async def generate_smart_plan(request: AITrainingPlanRequest, profile: dict, ana
                 if len(selected) < 3:
                     selected.append(ex)
     
-    # Fill up to 8 exercises from priority categories
-    for category in categories_priority:
+    # Calculate exercises per category based on number of goals
+    # More goals = more exercises (8-12 based on goal count)
+    max_exercises = 8 + (len(all_goals) - 1) * 2  # 8, 10, or 12 exercises
+    exercises_per_category = max(2, max_exercises // len(combined_categories))
+    
+    # Fill exercises from priority categories
+    for category in combined_categories:
+        cat_count = 0
         for ex in safe_exercises:
             if (ex.get('category') == category and 
                 ex.get('difficulty') in allowed_difficulties and
                 ex not in selected):
                 selected.append(ex)
-                if len(selected) >= 8:
+                cat_count += 1
+                if cat_count >= exercises_per_category or len(selected) >= max_exercises:
                     break
-        if len(selected) >= 8:
+        if len(selected) >= max_exercises:
             break
     
-    # Ensure we have at least 5 exercises
-    if len(selected) < 5:
+    # Ensure we have at least 6 exercises
+    if len(selected) < 6:
         for ex in safe_exercises:
             if ex not in selected and ex.get('difficulty') in allowed_difficulties:
                 selected.append(ex)
                 if len(selected) >= 6:
                     break
     
+    # Determine primary goal characteristics for sets/reps
+    primary_goal = all_goals[0] if all_goals else 'general'
+    
     # Create workout exercises with appropriate sets/reps
     workout_exercises = []
     for ex in selected:
-        # Adjust based on goal
-        if goal == 'muscle_gain':
+        # Adjust based on primary goal
+        if primary_goal == 'muscle_gain':
             sets, reps = (4, 8) if experience_level != 'beginner' else (3, 10)
-        elif goal == 'endurance':
+            rest = 90
+        elif primary_goal == 'endurance':
             sets, reps = (3, 15)
-        elif goal == 'rehabilitation':
+            rest = 45
+        elif primary_goal == 'rehabilitation':
             sets, reps = (2, 12)
+            rest = 60
+        elif primary_goal == 'weight_loss':
+            sets, reps = (3, 12)
+            rest = 30
         else:
             sets, reps = (3, 10)
+            rest = 60
         
         workout_exercises.append({
             "exercise_id": ex['id'],
             "sets": sets,
             "reps": reps,
-            "rest_seconds": 60 if goal != 'muscle_gain' else 90,
+            "rest_seconds": rest,
             "notes": f"Achte auf korrekte Ausführung"
         })
     
-    # Generate plan name
+    # Generate plan name based on goals
     goal_names = {
         'weight_loss': 'Fettverbrennung',
         'muscle_gain': 'Muskelaufbau',
@@ -446,9 +466,17 @@ async def generate_smart_plan(request: AITrainingPlanRequest, profile: dict, ana
         'rehabilitation': 'Rehabilitation'
     }
     
+    if len(all_goals) == 1:
+        plan_name = f"Personalisierter {goal_names.get(all_goals[0], 'Fitness')}-Plan"
+        description = f"Maßgeschneiderter Plan für {goal_names.get(all_goals[0], 'Fitness')} basierend auf deinem Profil und gesundheitlichen Einschränkungen."
+    else:
+        goal_labels = [goal_names.get(g, g) for g in all_goals]
+        plan_name = f"Kombinierter Plan: {' + '.join(goal_labels)}"
+        description = f"Maßgeschneiderter Kombinationsplan für {', '.join(goal_labels[:-1])} und {goal_labels[-1]} basierend auf deinem Profil."
+    
     return {
-        "name": f"Personalisierter {goal_names.get(goal, 'Fitness')}-Plan",
-        "description": f"Maßgeschneiderter Plan für {goal_names.get(goal, 'Fitness')} basierend auf deinem Profil und gesundheitlichen Einschränkungen.",
+        "name": plan_name,
+        "description": description,
         "exercises": workout_exercises
     }
 
