@@ -1,7 +1,7 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 
-export const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://fitex.masexitus.de/api';
+export const API_URL = Constants.expoConfig?.extra?.apiUrl || 'https://api.fitex.masexitus.de/api';
 
 export const api = axios.create({
   baseURL: API_URL,
