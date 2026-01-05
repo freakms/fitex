@@ -48,7 +48,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - EXPO_PUBLIC_API_URL=https://fitex.masexitus.de/api
+      - EXPO_PUBLIC_API_URL=https://api.fitex.masexitus.de/api
     depends_on:
       - backend
     networks:
