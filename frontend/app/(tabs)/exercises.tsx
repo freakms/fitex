@@ -37,10 +37,12 @@ export default function Exercises() {
         getExercises(selectedCategory ? { category: selectedCategory } : undefined),
         getCategories(),
       ]);
-      setExercises(exercisesData);
-      setCategories(categoriesData.categories);
+      setExercises(Array.isArray(exercisesData) ? exercisesData : []);
+      setCategories(Array.isArray(categoriesData?.categories) ? categoriesData.categories : []);
     } catch (error) {
       console.error('Error loading exercises:', error);
+      setExercises([]);
+      setCategories([]);
     } finally {
       setLoading(false);
     }
