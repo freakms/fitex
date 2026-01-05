@@ -116,6 +116,7 @@ export const deletePlan = async (id: string): Promise<void> => {
 
 export const generateAIPlan = async (request: {
   goal: string;
+  goals?: string[];
   days_per_week: number;
   duration_weeks: number;
   focus_areas?: string[];

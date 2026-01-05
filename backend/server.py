@@ -135,7 +135,8 @@ class WorkoutLog(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 class AITrainingPlanRequest(BaseModel):
-    goal: str
+    goal: str  # Primary goal (backwards compatible)
+    goals: Optional[List[str]] = None  # Multiple goals (up to 3)
     days_per_week: int = 3
     duration_weeks: int = 4
     focus_areas: Optional[List[str]] = None  # specific muscle groups or areas
