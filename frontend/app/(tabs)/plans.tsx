@@ -25,9 +25,10 @@ export default function Plans() {
   const loadPlans = useCallback(async () => {
     try {
       const data = await getPlans();
-      setPlans(data);
+      setPlans(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error loading plans:', error);
+      setPlans([]);
     } finally {
       setLoading(false);
     }
