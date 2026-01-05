@@ -36,9 +36,10 @@ export default function CreatePlan() {
     const loadExercises = async () => {
       try {
         const data = await getExercises();
-        setAvailableExercises(data);
+        setAvailableExercises(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error loading exercises:', error);
+        setAvailableExercises([]);
       }
     };
     loadExercises();
@@ -52,7 +53,7 @@ export default function CreatePlan() {
     { id: 'rehabilitation', label: 'Rehabilitation', icon: 'medkit' },
   ];
 
-  const filteredExercises = availableExercises.filter((ex) =>
+  const filteredExercises = (availableExercises || []).filter((ex) =>
     ex.name_de.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
